@@ -12,6 +12,7 @@
   "dependencies": {
     "@types/matter-js": "^0.20.0",
     "matter-js": "^0.20.0",
+    "pathseg": "^1.2.1",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },

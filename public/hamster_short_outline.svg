@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   version="1.1"
+   id="svg55"
+   width="1000"
+   height="1000"
+   viewBox="0 0 1000 1000"
+   sodipodi:docname="hamster_short_outline.svg"
+   inkscape:version="1.4.2 (ebf0e940d0, 2025-05-08)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs59">
+    <linearGradient
+       id="linearGradient3528"
+       inkscape:swatch="solid">
+      <stop
+         style="stop-color:#000000;stop-opacity:1;"
+         offset="0"
+         id="stop3526" />
+    </linearGradient>
+  </defs>
+  <sodipodi:namedview
+     id="namedview57"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     showgrid="false"
+     inkscape:zoom="0.90895907"
+     inkscape:cx="449.96526"
+     inkscape:cy="551.17993"
+     inkscape:window-width="1920"
+     inkscape:window-height="1052"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="layer2" />
+  <g
+     inkscape:groupmode="layer"
+     id="layer2"
+     inkscape:label="Layer 1">
+    <path
+       style="fill:#000000"
+       d="M 225.53271,996.74455 206.83,877.92732 195.8284,744.80801 l 8.80128,-147.42138 47.30686,-151.82201 92.4134,-105.61532 95.71388,-40.7059 -37.40543,-129.81883 34.10495,-26.40383 45.10654,150.72186 114.4166,2.20032 101.21467,16.50239 78.11133,50.60734 50.60734,64.90941 23.10335,70.41022 1.10016,102.31483 -35.2051,124.31803 4.40063,273.93973 z"
+       id="path2"
+       sodipodi:nodetypes="ccccccccccccccccccc" />
+  </g>
+</svg>

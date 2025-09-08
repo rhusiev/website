@@ -1,12 +1,21 @@
-import { useState } from 'react'
-import Canvas from './ExampleCanvas.tsx';
+import { useState } from "react";
+import Canvas from "./ExampleCanvas.tsx";
 
 function App() {
-  return (
-    <>
-      <Canvas canvasWidth={400} canvasHeight={300} rectangleWidth={80} rectangleHeight={60} />
-    </>
-  )
+    return (
+        <>
+            <Canvas
+                canvasWidth={300}
+                canvasHeight={200}
+                textureSvgPath="/hamster_short.svg"
+                collisionSvgPath="/hamster_short_outline.svg"
+                scale={0.15}
+                onClick={() => {
+                    console.log("yay");
+                }}
+            />
+        </>
+    );
 }
 
-export default App
+export default App;
