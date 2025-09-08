@@ -10,6 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@types/matter-js": "^0.20.0",
+    "matter-js": "^0.20.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1"
   },
