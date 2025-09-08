@@ -8,63 +8,118 @@ import {
     Svg,
     Vector,
     World,
-    Query,
 } from "matter-js";
 import "pathseg";
 
-interface CanvasProps {
-    canvasWidth: number;
-    canvasHeight: number;
+export interface SvgObjectConfig {
+    id: string;
     textureSvgPath: string;
     collisionSvgPath: string;
     scale?: number;
+    initialPosition?: { x: number; y: number };
     initialVelocity?: { x: number; y: number };
     angularVelocity?: number;
     onClick?: () => void;
 }
 
-const Canvas = ({
-    canvasWidth,
-    canvasHeight,
-    textureSvgPath,
-    collisionSvgPath,
-    scale = 0.5,
-    initialVelocity = { x: 1, y: -0.5 },
-    angularVelocity = 0.03,
-    onClick = () => {},
-}: CanvasProps) => {
+interface CanvasProps {
+    canvasWidth: number;
+    canvasHeight: number;
+    objects: SvgObjectConfig[];
+}
+
+const Canvas = ({ canvasWidth, canvasHeight, objects }: CanvasProps) => {
     const canvasRef = useRef<HTMLDivElement>(null);
     const engineRef = useRef<Engine>();
     const renderRef = useRef<Render>();
     const runnerRef = useRef<Runner>();
 
-    const bodyRef = useRef<Body | null>(null);
-    const velocityRef = useRef({ x: 0, y: 0, angular: 0 });
+    const bodiesRef = useRef<Body[]>([]);
+    const velocitiesRef = useRef<
+        Map<number, { x: number; y: number; angular: number }>
+    >(new Map());
+    const onClickHandlersRef = useRef<Map<number, () => void>>(new Map());
+
+    const selectedRef = useRef<{ body: Body; originalScale: number } | null>(
+        null,
+    );
+    const frozenRef = useRef(false);
 
     const handleFreeze = useCallback(() => {
-        if (!bodyRef.current) return;
-
-        velocityRef.current = {
-            x: bodyRef.current.velocity.x,
-            y: bodyRef.current.velocity.y,
-            angular: bodyRef.current.angularVelocity,
-        };
-        Body.setStatic(bodyRef.current, true);
+        if (bodiesRef.current.length === 0) return;
+        frozenRef.current = true;
+        bodiesRef.current.forEach((body) => {
+            if (body.isStatic) return;
+            velocitiesRef.current.set(body.id, {
+                x: body.velocity.x,
+                y: body.velocity.y,
+                angular: body.angularVelocity,
+            });
+            Body.setStatic(body, true);
+        });
     }, []);
 
     const handleUnfreeze = useCallback(() => {
-        if (!bodyRef.current) return;
-
-        Body.setStatic(bodyRef.current, false);
-        Body.setVelocity(bodyRef.current, {
-            x: velocityRef.current.x,
-            y: velocityRef.current.y,
+        if (bodiesRef.current.length === 0) return;
+        frozenRef.current = false;
+        bodiesRef.current.forEach((body) => {
+            Body.setStatic(body, false);
+            const saved = velocitiesRef.current.get(body.id);
+            if (saved) {
+                Body.setVelocity(body, { x: saved.x, y: saved.y });
+                Body.setAngularVelocity(body, saved.angular);
+            }
         });
-        Body.setAngularVelocity(bodyRef.current, velocityRef.current.angular);
+        clearSelection();
     }, []);
 
+    const clearSelection = useCallback(() => {
+        if (!selectedRef.current) return;
+        const { body, originalScale } = selectedRef.current;
+        body.render.sprite &&
+            (body.render.sprite.xScale =
+                body.render.sprite.yScale =
+                    originalScale);
+        selectedRef.current = null;
+    }, []);
+
+    const updateSelection = useCallback(
+        (mouseX: number, mouseY: number) => {
+            if (!frozenRef.current) return;
+            let closest: Body | null = null;
+            let minDist = Infinity;
+
+            bodiesRef.current.forEach((body) => {
+                const dist = Vector.magnitude(
+                    Vector.sub(body.position, { x: mouseX, y: mouseY }),
+                );
+                if (dist < minDist) {
+                    minDist = dist;
+                    closest = body;
+                }
+            });
+
+            if (!closest) return;
+
+            if (selectedRef.current?.body.id !== closest.id) {
+                clearSelection();
+
+                const currentScale = closest.render.sprite?.xScale ?? 1;
+                selectedRef.current = {
+                    body: closest,
+                    originalScale: currentScale,
+                };
+
+                closest.render.sprite &&
+                    (closest.render.sprite.xScale = closest.render.sprite
+                        .yScale = currentScale * 1.25);
+            }
+        },
+        [clearSelection],
+    );
+
     useEffect(() => {
-        if (!canvasRef.current || !textureSvgPath || !collisionSvgPath) return;
+        if (!canvasRef.current) return;
 
         const engine = Engine.create();
         engineRef.current = engine;
@@ -77,59 +132,115 @@ const Canvas = ({
                 height: canvasHeight,
                 wireframes: false,
                 background: "#00000000",
-                showVelocity: false,
-                showAngleIndicator: false,
             },
         });
         renderRef.current = render;
 
         const wallThickness = 50;
         const wallOptions = { isStatic: true, render: { visible: false } };
-        const walls = [
-            Bodies.rectangle(canvasWidth / 2, -wallThickness / 2, canvasWidth, wallThickness, wallOptions),
-            Bodies.rectangle(canvasWidth / 2, canvasHeight + wallThickness / 2, canvasWidth, wallThickness, wallOptions),
-            Bodies.rectangle(-wallThickness / 2, canvasHeight / 2, wallThickness, canvasHeight, wallOptions),
-            Bodies.rectangle(canvasWidth + wallThickness / 2, canvasHeight / 2, wallThickness, canvasHeight, wallOptions),
-        ];
-        World.add(engine.world, walls);
+        World.add(engine.world, [
+            Bodies.rectangle(
+                canvasWidth / 2,
+                -wallThickness / 2,
+                canvasWidth,
+                wallThickness,
+                wallOptions,
+            ),
+            Bodies.rectangle(
+                canvasWidth / 2,
+                canvasHeight + wallThickness / 2,
+                canvasWidth,
+                wallThickness,
+                wallOptions,
+            ),
+            Bodies.rectangle(
+                -wallThickness / 2,
+                canvasHeight / 2,
+                wallThickness,
+                canvasHeight,
+                wallOptions,
+            ),
+            Bodies.rectangle(
+                canvasWidth + wallThickness / 2,
+                canvasHeight / 2,
+                wallThickness,
+                canvasHeight,
+                wallOptions,
+            ),
+        ]);
 
-        fetch(collisionSvgPath)
-            .then((r) => r.text())
-            .then((raw) => {
-                const svgEl = new DOMParser().parseFromString(raw, "image/svg+xml").querySelector("svg");
-                const pathEls = svgEl?.querySelectorAll("path");
-                if (!pathEls || pathEls.length === 0) return;
+        const bodyCreationPromises = objects.map((obj) =>
+            fetch(obj.collisionSvgPath)
+                .then((r) => r.text())
+                .then((rawSvg) => {
+                    const svgEl = new DOMParser().parseFromString(
+                        rawSvg,
+                        "image/svg+xml",
+                    ).querySelector("svg");
+                    const pathEls = Array.from(
+                        svgEl?.querySelectorAll("path") || [],
+                    );
+                    if (pathEls.length === 0) return null;
 
-                const vertexSets: Vector[][] = Array.from(pathEls).map((pathEl) => {
-                    const vertices = Svg.pathToVertices(pathEl, 10);
-                    return vertices.map((p) => Vector.mult(p, scale));
-                });
+                    const scale = obj.scale ?? 0.5;
+                    const vertexSets: Vector[][] = pathEls.map((pathEl) => {
+                        const vertices = Svg.pathToVertices(pathEl, 10);
+                        return vertices.map((p) => Vector.mult(p, scale));
+                    });
 
-                const svgBody = Bodies.fromVertices(
-                    canvasWidth / 2,
-                    canvasHeight / 3,
-                    vertexSets,
-                    {
-                        restitution: 1,
-                        friction: 0,
-                        frictionAir: 0,
-                        inertia: Infinity,
-                        render: {
-                            sprite: {
-                                texture: textureSvgPath,
-                                xScale: scale,
-                                yScale: scale,
+                    const initialPosition = obj.initialPosition ?? {
+                        x: Math.random() * (canvasWidth * 0.8) +
+                            canvasWidth * 0.1,
+                        y: Math.random() * (canvasHeight * 0.8) +
+                            canvasHeight * 0.1,
+                    };
+
+                    const svgBody = Bodies.fromVertices(
+                        initialPosition.x,
+                        initialPosition.y,
+                        vertexSets,
+                        {
+                            restitution: 1,
+                            friction: 0,
+                            frictionAir: 0,
+                            inertia: Infinity,
+                            render: {
+                                sprite: {
+                                    texture: obj.textureSvgPath,
+                                    xScale: scale,
+                                    yScale: scale,
+                                },
                             },
                         },
-                    },
-                );
+                    );
 
-                bodyRef.current = svgBody;
+                    Body.setVelocity(
+                        svgBody,
+                        obj.initialVelocity ??
+                            {
+                                x: (Math.random() - 0.5) * 2,
+                                y: (Math.random() - 0.5) * 2,
+                            },
+                    );
+                    Body.setAngularVelocity(
+                        svgBody,
+                        obj.angularVelocity ?? (Math.random() - 0.5) * 0.05,
+                    );
 
-                Body.setVelocity(svgBody, initialVelocity);
-                Body.setAngularVelocity(svgBody, angularVelocity);
-                World.add(engine.world, svgBody);
-            });
+                    if (obj.onClick) {
+                        onClickHandlersRef.current.set(svgBody.id, obj.onClick);
+                    }
+                    return svgBody;
+                })
+        );
+
+        Promise.all(bodyCreationPromises).then((createdBodies) => {
+            const validBodies = createdBodies.filter((body): body is Body =>
+                body !== null
+            );
+            bodiesRef.current = validBodies;
+            World.add(engine.world, validBodies);
+        });
 
         const runner = Runner.create();
         runnerRef.current = runner;
@@ -139,52 +250,34 @@ const Canvas = ({
         const canvasElement = render.canvas;
 
         const handleClick = (event: MouseEvent) => {
-            if (!bodyRef.current || !onClick) return;
-
-            const mousePosition = {
-                x: event.offsetX,
-                y: event.offsetY,
-            };
-
-            const bodies = Query.point([bodyRef.current], mousePosition);
-
-            if (bodies.length > 0) {
-                onClick();
+            if (selectedRef.current) {
+                const selectedBodyId = selectedRef.current.body.id;
+                const onClickHandler = onClickHandlersRef.current.get(selectedBodyId);
+                onClickHandler?.();
             }
         };
 
-        if (onClick) {
-            canvasElement.addEventListener('click', handleClick);
-        }
+        const handleMouseMove = (event: MouseEvent) =>
+            updateSelection(event.offsetX, event.offsetY);
+        canvasElement.addEventListener("mousemove", handleMouseMove);
+        canvasElement.addEventListener("click", handleClick);
 
         return () => {
-            if (onClick && canvasElement) {
-                canvasElement.removeEventListener('click', handleClick);
-            }
-
+            canvasElement.removeEventListener("click", handleClick);
+            canvasElement.removeEventListener("mousemove", handleMouseMove);
             if (renderRef.current) {
                 Render.stop(renderRef.current);
-                if (renderRef.current.canvas) {
-                    renderRef.current.canvas.remove();
-                }
+                renderRef.current.canvas?.remove();
             }
             if (runnerRef.current && engineRef.current) {
                 Runner.stop(runnerRef.current);
                 World.clear(engineRef.current.world, false);
-                Engine.clear(engineRef.current);
             }
-            bodyRef.current = null;
+            bodiesRef.current = [];
+            velocitiesRef.current.clear();
+            onClickHandlersRef.current.clear();
         };
-    }, [
-        canvasWidth,
-        canvasHeight,
-        textureSvgPath,
-        collisionSvgPath,
-        scale,
-        initialVelocity,
-        angularVelocity,
-        onClick,
-    ]);
+    }, [canvasWidth, canvasHeight, objects, updateSelection]);
 
     return (
         <div
@@ -193,15 +286,18 @@ const Canvas = ({
             onMouseLeave={handleUnfreeze}
             onFocus={handleFreeze}
             onBlur={handleUnfreeze}
+            tabIndex={0}
             style={{
                 border: "2px solid #aaa",
                 borderRadius: "8px",
                 width: canvasWidth,
                 height: canvasHeight,
                 overflow: "hidden",
+                outline: "none",
+                cursor: "pointer",
             }}
         />
     );
 };
 
-export default Canvas;
+export default Canvas
