@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { CSSProperties, useCallback, useEffect, useRef } from "react";
 import {
     Bodies,
     Body,
@@ -26,15 +26,26 @@ interface CanvasProps {
     canvasWidth: number;
     canvasHeight: number;
     objects: SvgObjectConfig[];
+    style?: CSSProperties;
+    padding?: number;
+    disableFreezeOnHover?: boolean;
 }
 
-const Canvas = ({ canvasWidth, canvasHeight, objects }: CanvasProps) => {
+const Canvas = ({
+    canvasWidth,
+    canvasHeight,
+    objects,
+    style,
+    padding = 30,
+    disableFreezeOnHover = false,
+}: CanvasProps) => {
     const canvasRef = useRef<HTMLDivElement>(null);
+
     const engineRef = useRef<Engine>();
     const renderRef = useRef<Render>();
     const runnerRef = useRef<Runner>();
 
-    const bodiesRef = useRef<Body[]>([]);
+    const bodiesRef = useRef<Map<string, Body>>(new Map());
     const velocitiesRef = useRef<
         Map<number, { x: number; y: number; angular: number }>
     >(new Map());
@@ -46,7 +57,7 @@ const Canvas = ({ canvasWidth, canvasHeight, objects }: CanvasProps) => {
     const frozenRef = useRef(false);
 
     const handleFreeze = useCallback(() => {
-        if (bodiesRef.current.length === 0) return;
+        if (bodiesRef.current.size === 0) return;
         frozenRef.current = true;
         bodiesRef.current.forEach((body) => {
             if (body.isStatic) return;
@@ -60,7 +71,7 @@ const Canvas = ({ canvasWidth, canvasHeight, objects }: CanvasProps) => {
     }, []);
 
     const handleUnfreeze = useCallback(() => {
-        if (bodiesRef.current.length === 0) return;
+        if (bodiesRef.current.size === 0) return;
         frozenRef.current = false;
         bodiesRef.current.forEach((body) => {
             Body.setStatic(body, false);
@@ -103,16 +114,16 @@ const Canvas = ({ canvasWidth, canvasHeight, objects }: CanvasProps) => {
 
             if (selectedRef.current?.body.id !== closest.id) {
                 clearSelection();
-
                 const currentScale = closest.render.sprite?.xScale ?? 1;
                 selectedRef.current = {
                     body: closest,
                     originalScale: currentScale,
                 };
-
                 closest.render.sprite &&
-                    (closest.render.sprite.xScale = closest.render.sprite
-                        .yScale = currentScale * 1.25);
+                    (closest.render.sprite.xScale =
+                        closest.render.sprite
+                            .yScale =
+                            currentScale * 1.25);
             }
         },
         [clearSelection],
@@ -122,8 +133,6 @@ const Canvas = ({ canvasWidth, canvasHeight, objects }: CanvasProps) => {
         if (!canvasRef.current) return;
 
         const engine = Engine.create();
-        engineRef.current = engine;
-
         const render = Render.create({
             element: canvasRef.current,
             engine,
@@ -134,34 +143,38 @@ const Canvas = ({ canvasWidth, canvasHeight, objects }: CanvasProps) => {
                 background: "#00000000",
             },
         });
+        const runner = Runner.create();
+
+        engineRef.current = engine;
         renderRef.current = render;
+        runnerRef.current = runner;
 
         const wallThickness = 50;
         const wallOptions = { isStatic: true, render: { visible: false } };
         World.add(engine.world, [
             Bodies.rectangle(
                 canvasWidth / 2,
-                -wallThickness / 2,
+                padding - wallThickness / 2,
                 canvasWidth,
                 wallThickness,
                 wallOptions,
             ),
             Bodies.rectangle(
                 canvasWidth / 2,
-                canvasHeight + wallThickness / 2,
+                canvasHeight - padding + wallThickness / 2,
                 canvasWidth,
                 wallThickness,
                 wallOptions,
             ),
             Bodies.rectangle(
-                -wallThickness / 2,
+                padding - wallThickness / 2,
                 canvasHeight / 2,
                 wallThickness,
                 canvasHeight,
                 wallOptions,
             ),
             Bodies.rectangle(
-                canvasWidth + wallThickness / 2,
+                canvasWidth - padding + wallThickness / 2,
                 canvasHeight / 2,
                 wallThickness,
                 canvasHeight,
@@ -169,7 +182,74 @@ const Canvas = ({ canvasWidth, canvasHeight, objects }: CanvasProps) => {
             ),
         ]);
 
-        const bodyCreationPromises = objects.map((obj) =>
+        Runner.run(runner, engine);
+        Render.run(render);
+
+        const canvasElement = render.canvas;
+        const handleClick = (event: MouseEvent) => {
+            if (selectedRef.current) {
+                const selectedBodyId = selectedRef.current.body.id;
+                const onClickHandler = onClickHandlersRef.current.get(
+                    selectedBodyId,
+                );
+                onClickHandler?.();
+            }
+        };
+        const handleMouseMove = (event: MouseEvent) =>
+            updateSelection(event.offsetX, event.offsetY);
+
+        if (!disableFreezeOnHover) {
+            canvasElement.addEventListener("mousemove", handleMouseMove);
+        }
+        canvasElement.addEventListener("click", handleClick);
+
+        return () => {
+            canvasElement.removeEventListener("click", handleClick);
+            if (!disableFreezeOnHover) {
+                canvasElement.removeEventListener("mousemove", handleMouseMove);
+            }
+            if (renderRef.current) {
+                Render.stop(renderRef.current);
+                renderRef.current.canvas?.remove();
+            }
+            if (runnerRef.current && engineRef.current) {
+                Runner.stop(runnerRef.current);
+                World.clear(engineRef.current.world, false);
+                Engine.clear(engineRef.current);
+            }
+            bodiesRef.current.clear();
+            velocitiesRef.current.clear();
+            onClickHandlersRef.current.clear();
+        };
+    }, [
+        canvasWidth,
+        canvasHeight,
+        padding,
+        disableFreezeOnHover,
+        updateSelection,
+    ]);
+
+    // Add new, remove old objects, when it is changed
+    useEffect(() => {
+        const engine = engineRef.current;
+        if (!engine) return;
+
+        const currentBodyIds = new Set(objects.map((obj) => obj.id));
+
+        bodiesRef.current.forEach((body, id) => {
+            if (!currentBodyIds.has(id)) {
+                World.remove(engine.world, body);
+                bodiesRef.current.delete(id);
+                onClickHandlersRef.current.delete(body.id);
+                velocitiesRef.current.delete(body.id);
+            }
+        });
+
+        const objectsToAdd = objects.filter((obj) =>
+            !bodiesRef.current.has(obj.id)
+        );
+
+        const bodyCreationPromises = objectsToAdd.map((obj) =>
             fetch(obj.collisionSvgPath)
                 .then((r) => r.text())
                 .then((rawSvg) => {
@@ -177,9 +257,8 @@ const Canvas = ({ canvasWidth, canvasHeight, objects }: CanvasProps) => {
                         rawSvg,
                         "image/svg+xml",
                     ).querySelector("svg");
-                    const pathEls = Array.from(
-                        svgEl?.querySelectorAll("path") || [],
-                    );
+                    if (!svgEl) return null;
+                    const pathEls = Array.from(svgEl.querySelectorAll("path"));
                     if (pathEls.length === 0) return null;
 
                     const scale = obj.scale ?? 0.5;
@@ -227,77 +306,54 @@ const Canvas = ({ canvasWidth, canvasHeight, objects }: CanvasProps) => {
                         obj.angularVelocity ?? (Math.random() - 0.5) * 0.05,
                     );
 
-                    if (obj.onClick) {
-                        onClickHandlersRef.current.set(svgBody.id, obj.onClick);
-                    }
-                    return svgBody;
+                    return { obj, body: svgBody };
                 })
         );
 
-        Promise.all(bodyCreationPromises).then((createdBodies) => {
-            const validBodies = createdBodies.filter((body): body is Body =>
-                body !== null
-            );
-            bodiesRef.current = validBodies;
-            World.add(engine.world, validBodies);
+        Promise.all(bodyCreationPromises).then((results) => {
+            const validCreations = results.filter((
+                r,
+            ): r is { obj: SvgObjectConfig; body: Body } => r !== null);
+
+            if (validCreations.length > 0) {
+                const newBodies = validCreations.map((c) => c.body);
+                World.add(engine.world, newBodies);
+
+                validCreations.forEach(({ obj, body }) => {
+                    bodiesRef.current.set(obj.id, body);
+                    if (obj.onClick) {
+                        onClickHandlersRef.current.set(body.id, obj.onClick);
+                    }
+                });
+            }
         });
+    }, [objects, canvasWidth, canvasHeight]);
 
-        const runner = Runner.create();
-        runnerRef.current = runner;
-        Runner.run(runner, engine);
-        Render.run(render);
+    const defaultStyle: CSSProperties = {
+        border: "0px solid #aaa",
+        borderRadius: "8px",
+        width: canvasWidth,
+        height: canvasHeight,
+        overflow: "hidden",
+        outline: "none",
+        cursor: disableFreezeOnHover ? "default" : "pointer",
+    };
 
-        const canvasElement = render.canvas;
-
-        const handleClick = (event: MouseEvent) => {
-            if (selectedRef.current) {
-                const selectedBodyId = selectedRef.current.body.id;
-                const onClickHandler = onClickHandlersRef.current.get(selectedBodyId);
-                onClickHandler?.();
-            }
-        };
-
-        const handleMouseMove = (event: MouseEvent) =>
-            updateSelection(event.offsetX, event.offsetY);
-        canvasElement.addEventListener("mousemove", handleMouseMove);
-        canvasElement.addEventListener("click", handleClick);
-
-        return () => {
-            canvasElement.removeEventListener("click", handleClick);
-            canvasElement.removeEventListener("mousemove", handleMouseMove);
-            if (renderRef.current) {
-                Render.stop(renderRef.current);
-                renderRef.current.canvas?.remove();
-            }
-            if (runnerRef.current && engineRef.current) {
-                Runner.stop(runnerRef.current);
-                World.clear(engineRef.current.world, false);
-            }
-            bodiesRef.current = [];
-            velocitiesRef.current.clear();
-            onClickHandlersRef.current.clear();
-        };
-    }, [canvasWidth, canvasHeight, objects, updateSelection]);
+    const hoverHandlers = disableFreezeOnHover ? {} : {
+        onMouseEnter: handleFreeze,
+        onMouseLeave: handleUnfreeze,
+        onFocus: handleFreeze,
+        onBlur: handleUnfreeze,
+    };
 
     return (
         <div
             ref={canvasRef}
-            onMouseEnter={handleFreeze}
-            onMouseLeave={handleUnfreeze}
-            onFocus={handleFreeze}
-            onBlur={handleUnfreeze}
             tabIndex={0}
-            style={{
-                border: "2px solid #aaa",
-                borderRadius: "8px",
-                width: canvasWidth,
-                height: canvasHeight,
-                overflow: "hidden",
-                outline: "none",
-                cursor: "pointer",
-            }}
+            style={{ ...defaultStyle, ...style }}
+            {...hoverHandlers}
         />
     );
 };
 
-export default Canvas
+export default Canvas;

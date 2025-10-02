@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   shape-rendering="geometricPrecision"
+   text-rendering="geometricPrecision"
+   image-rendering="optimizeQuality"
+   fill-rule="evenodd"
+   clip-rule="evenodd"
+   viewBox="0 0 505.54223 509.11919"
+   version="1.1"
+   id="svg3"
+   sodipodi:docname="cookie_outline.svg"
+   width="505.54224"
+   height="509.11917"
+   inkscape:version="1.4.2 (ebf0e940d0, 2025-05-08)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs3" />
+  <sodipodi:namedview
+     id="namedview3"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="1.6774068"
+     inkscape:cx="254.26151"
+     inkscape:cy="252.47304"
+     inkscape:window-width="1920"
+     inkscape:window-height="1052"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg3" />
+  <path
+     style="fill:#000000"
+     d="M 0,227.73247 26.827123,138.30872 98.366118,51.269613 212.82851,1.1923166 283.77135,0 504.34991,218.19394 505.54223,299.86762 460.2342,407.77227 360.67577,487.65749 259.32886,509.11918 144.86646,485.27285 69.75052,429.83013 10.134691,326.69475 Z"
+     id="path4" />
+</svg>
