@@ -1,4 +1,11 @@
-import { CSSProperties, useCallback, useEffect, useRef } from "react";
+import {
+    CSSProperties,
+    MouseEvent,
+    useCallback,
+    useEffect,
+    useRef,
+} from "react";
+import { useNavigate } from "react-router-dom";
 import {
     Bodies,
     Body,
@@ -19,7 +26,9 @@ export interface SvgObjectConfig {
     initialPosition?: { x: number; y: number };
     initialVelocity?: { x: number; y: number };
     angularVelocity?: number;
-    onClick?: () => void;
+    href?: string;
+    target?: string;
+    onClick?: (event: MouseEvent) => void;
 }
 
 interface CanvasProps {
@@ -39,17 +48,23 @@ const Canvas = ({
     padding = 30,
     disableFreezeOnHover = false,
 }: CanvasProps) => {
+    const navigate = useNavigate();
     const canvasRef = useRef<HTMLDivElement>(null);
 
-    const engineRef = useRef<Engine>();
-    const renderRef = useRef<Render>();
-    const runnerRef = useRef<Runner>();
+    const matterInstanceRef = useRef<
+        {
+            engine: Engine;
+            render: Render;
+            runner: Runner;
+        } | null
+    >(null);
 
     const bodiesRef = useRef<Map<string, Body>>(new Map());
     const velocitiesRef = useRef<
         Map<number, { x: number; y: number; angular: number }>
     >(new Map());
-    const onClickHandlersRef = useRef<Map<number, () => void>>(new Map());
+
+    const bodyIdToConfigRef = useRef<Map<number, SvgObjectConfig>>(new Map());
 
     const selectedRef = useRef<{ body: Body; originalScale: number } | null>(
         null,
@@ -110,7 +125,10 @@ const Canvas = ({
                 }
             });
 
-            if (!closest) return;
+            if (!closest) {
+                clearSelection();
+                return;
+            }
 
             if (selectedRef.current?.body.id !== closest.id) {
                 clearSelection();
@@ -145,9 +163,7 @@ const Canvas = ({
         });
         const runner = Runner.create();
 
-        engineRef.current = engine;
-        renderRef.current = render;
-        runnerRef.current = runner;
+        matterInstanceRef.current = { engine, render, runner };
 
         const wallThickness = 50;
         const wallOptions = { isStatic: true, render: { visible: false } };
@@ -185,62 +201,102 @@ const Canvas = ({
         Runner.run(runner, engine);
         Render.run(render);
 
-        const canvasElement = render.canvas;
-        const handleClick = (event: MouseEvent) => {
+        return () => {
+            if (matterInstanceRef.current) {
+                const { render, runner, engine } = matterInstanceRef.current;
+                Render.stop(render);
+                render.canvas?.remove();
+                Runner.stop(runner);
+                World.clear(engine.world, false);
+                Engine.clear(engine);
+            }
+            bodiesRef.current.clear();
+            velocitiesRef.current.clear();
+            bodyIdToConfigRef.current.clear();
+        };
+    }, [canvasWidth, canvasHeight, padding]);
+
+    useEffect(() => {
+        const canvasElement = matterInstanceRef.current?.render.canvas;
+        if (!canvasElement) return;
+
+        const handleMouseDown = (event: MouseEvent) => {
             if (selectedRef.current) {
                 const selectedBodyId = selectedRef.current.body.id;
-                const onClickHandler = onClickHandlersRef.current.get(
-                    selectedBodyId,
-                );
-                onClickHandler?.();
+                const config = bodyIdToConfigRef.current.get(selectedBodyId);
+
+                if (!config) return;
+
+                if (config.href) {
+                    event.preventDefault();
+
+                    const isNewTab = event.button === 1 || event.metaKey ||
+                        event.ctrlKey;
+                    const isLocalNav = config.href.startsWith("/");
+
+                    if (isLocalNav && event.button === 0 && !isNewTab) {
+                        navigate(config.href);
+                    } else {
+                        const target = isNewTab
+                            ? "_blank"
+                            : (config.target || "_self");
+                        window.open(config.href, target);
+                    }
+                } else if (config.onClick && event.button === 0) {
+                    config.onClick(event);
+                }
             }
         };
-        const handleMouseMove = (event: MouseEvent) =>
+
+        const handleContextMenu = (event: MouseEvent) => {
+            if (selectedRef.current) {
+                const selectedBodyId = selectedRef.current.body.id;
+                const config = bodyIdToConfigRef.current.get(selectedBodyId);
+
+                if (config?.href) {
+                    event.preventDefault();
+                }
+            }
+        };
+        const handleMouseMove = (event: MouseEvent) => {
             updateSelection(event.offsetX, event.offsetY);
+        };
 
         if (!disableFreezeOnHover) {
             canvasElement.addEventListener("mousemove", handleMouseMove);
         }
-        canvasElement.addEventListener("click", handleClick);
+        canvasElement.addEventListener(
+            "mousedown",
+            handleMouseDown as EventListener,
+        );
+        canvasElement.addEventListener(
+            "contextmenu",
+            handleContextMenu as EventListener,
+        );
 
         return () => {
-            canvasElement.removeEventListener("click", handleClick);
-            if (!disableFreezeOnHover) {
-                canvasElement.removeEventListener("mousemove", handleMouseMove);
-            }
-            if (renderRef.current) {
-                Render.stop(renderRef.current);
-                renderRef.current.canvas?.remove();
-            }
-            if (runnerRef.current && engineRef.current) {
-                Runner.stop(runnerRef.current);
-                World.clear(engineRef.current.world, false);
-                Engine.clear(engineRef.current);
-            }
-            bodiesRef.current.clear();
-            velocitiesRef.current.clear();
-            onClickHandlersRef.current.clear();
+            canvasElement.removeEventListener("mousemove", handleMouseMove);
+            canvasElement.removeEventListener(
+                "mousedown",
+                handleMouseDown as EventListener,
+            );
+            canvasElement.removeEventListener(
+                "contextmenu",
+                handleContextMenu as EventListener,
+            );
         };
-    }, [
-        canvasWidth,
-        canvasHeight,
-        padding,
-        disableFreezeOnHover,
-        updateSelection,
-    ]);
+    }, [disableFreezeOnHover, updateSelection, navigate]);
 
-    // Add new, remove old objects, when it is changed
     useEffect(() => {
-        const engine = engineRef.current;
+        const engine = matterInstanceRef.current?.engine;
         if (!engine) return;
-
         const currentBodyIds = new Set(objects.map((obj) => obj.id));
 
         bodiesRef.current.forEach((body, id) => {
             if (!currentBodyIds.has(id)) {
                 World.remove(engine.world, body);
                 bodiesRef.current.delete(id);
-                onClickHandlersRef.current.delete(body.id);
+                bodyIdToConfigRef.current.delete(body.id);
                 velocitiesRef.current.delete(body.id);
             }
         });
@@ -321,9 +377,7 @@ const Canvas = ({
 
                 validCreations.forEach(({ obj, body }) => {
                     bodiesRef.current.set(obj.id, body);
-                    if (obj.onClick) {
-                        onClickHandlersRef.current.set(body.id, obj.onClick);
-                    }
+                    bodyIdToConfigRef.current.set(body.id, obj);
                 });
             }
         });
